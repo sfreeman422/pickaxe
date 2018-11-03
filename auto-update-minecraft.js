@@ -1,10 +1,13 @@
 const axios = require("axios");
 const readline = require("readline");
 const { exec } = require("child_process");
+const fs = require('fs');
+const os = process.platform;
+let config;
 
 /**
  *
- * Gets data from the providede url.
+ * Gets data from the provided url.
  *
  * @param {string} url
  */
@@ -22,21 +25,24 @@ function getData(url) {
  *
  * @param {*} command
  */
-function executeChild(command) {
+function executeChild(command, options) {
   return new Promise((resolve, reject) => {
-    exec(command, (error, stdout, stderr) => {
-      if (error || stderr) {
+    exec(command, options, (error, stdout) => {
+      if (error) {
         reject(
-          new Error(`Failed execution of ${command} with ${error || stderr}`)
+          new Error(`Failed execution of ${command} with ${error}`)
         );
       } else resolve(`Successfully executed ${command}`);
     });
   });
 }
 
+function readFile(path) {
+  return fs.readFileSync(path);
+}
+
 /*
  * Starts the new server and handles housekeeping.
- * TODO: See if below logic is really necessary?
  * TODO: Check if EULA.txt exists, if not, start server, let it die, and replace EULA.
  * If it does, be sure its true and if not set it to true.
  * TODO: Restore local files from backup.
@@ -45,8 +51,20 @@ function executeChild(command) {
 
 async function initializeServer() {
   try {
-    await executeChild("java -jar ./server.jar -nogui");
-    await executeChild('sed -i "" "s/eula=false/eula=true/" eula.txt');
+    await executeChild(`java -jar ${config.serverLocation}server.jar -nogui`, { cwd: `${config.serverLocation}` });
+    let sedCommand;
+    switch (os) {
+      case 'darwin':
+        sedCommand = `sed -i "" "s/eula=false/eula=true/" ${config.serverLocation}eula.txt`
+        break;
+      case 'linux':
+        sedCommand = `sed -i "s/eula=false/eula=true/" ${config.serverLocation}eula.txt`
+        break;
+    }
+    console.log("Accepting EULA...");
+    await executeChild(sedCommand);
+    console.log("Accepted EULA");
+    
   } catch (e) {
     console.error(e);
   }
@@ -68,7 +86,7 @@ async function downloadLatestJar(latestFromServer, latestRelease) {
       }...`
     );
     await executeChild(
-      `wget -O server.jar ${latestVersionUrl.downloads.server.url}`
+      `wget -O ${config.serverLocation}server.jar ${latestVersionUrl.downloads.server.url}`
     );
     console.log("Successfully retrieved latest jar.");
     console.log("Initializing server...");
@@ -82,10 +100,15 @@ async function downloadLatestJar(latestFromServer, latestRelease) {
  * Checks if our environment variables have been set.
 */
 function isFirstLaunch() {
-  return (
-    !process.env.minecraftServerInstallLocation ||
-    !process.env.minecraftServerCurrentVersion
-  );
+  try {
+    config = JSON.parse(readFile('./config.json'));
+    if (config.currentVersion && config.serverLocation) {
+      return false;
+    } return true;
+  } catch (e) {
+    console.error(`Error detected: ${e}`);
+    return true;
+  }
 }
 
 /**
@@ -94,29 +117,30 @@ function isFirstLaunch() {
  *
  * @param {*} question
  */
-function askQuestion(question, confirm) {
+function askQuestion(question, shouldConfirm) {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
   });
 
   const confirm = () =>
-    new Promise(resolve => {
-      rl.question("Confirm? (y/n)", answer => {
-        const answerLower = answer.toString().toLowerCase();
-        if (answerLower === "y") {
-          rl.close();
-          resolve(true);
-        } else {
-          rl.close();
-          resolve(askQuestion(question, confirm));
-        }
-      });
+  new Promise(resolve => {
+    rl.question("Confirm? (y/n)", answer => {
+      const answerLower = answer.toString().toLowerCase();
+      if (answerLower === "y") {
+        rl.close();
+        resolve(true);
+      } else {
+        rl.close();
+        resolve(askQuestion(question, confirm));
+      }
     });
+  });
+
 
   return new Promise(resolve => {
     rl.question(question, async answer => {
-      if (confirm) {
+      if (shouldConfirm) {
         await confirm(answer);
       }
       resolve(answer);
@@ -125,28 +149,39 @@ function askQuestion(question, confirm) {
   });
 }
 
+function setConfig(configObj) {
+  if (config) {
+    // edit config file, with line fullPath
+    console.log('config exists, should be editing');
+  } else {
+    // create config file
+    fs.writeFileSync('./config.json', JSON.stringify(configObj));
+  }
+}
+
 /*
  * Queries the server for the latest release version.
  * Compares to our current version and kicks off a new download if necessary.
 */
 async function initialize() {
   if (isFirstLaunch()) {
-    console.log("Welcome to MinecraftUpdate!");
+    console.debug(`System detected as ${os}`)
+    console.log(`Welcome to MinecraftUpdate for ${os}!`);
     console.log("This appears to be your first launch.");
     console.log("Please answer a few questions.");
-    const fullPath = await askQuestion(
+    let serverLocation = await askQuestion(
       "Full path to server installation folder?",
       true
     );
+    if (!serverLocation.endsWith('/')) {
+      serverLocation += '/';
+    }
     const currentVersion = await askQuestion(
       "Current version of server?",
       true
     );
     try {
-      await executeChild(`export minecraftServerInstallLocation=${fullPath}`);
-      await executeChild(
-        `export minecraftServerCurrentVersion=${currentVersion}`
-      );
+      setConfig({ currentVersion, serverLocation });
       initialize();
     } catch (e) {
       console.error(e);
@@ -160,13 +195,13 @@ async function initialize() {
     try {
       console.log(
         `Current version detected as ${
-          process.env.currentVersionMinecraftServer
+          config.currentVersion
         }`
       );
       const latestUpdate = await getData(URL);
       const latestRelease = latestUpdate.latest.release;
       console.log(`Latest Release: ${latestRelease}`);
-      if (localVersion === latestRelease) {
+      if (config.currentVersion === latestRelease) {
         console.log(
           "Current release and local version match. No need for updates at this time."
         );
