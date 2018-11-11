@@ -1,45 +1,9 @@
-const axios = require("axios");
 const readline = require("readline");
-const { exec } = require("child_process");
-const fs = require('fs');
+const fs = require("fs");
+const getData = require("./helpers/getData.js");
+const executeChild = require("./helpers/executeChild.js");
 const os = process.platform;
 let config;
-
-/**
- *
- * Gets data from the provided url.
- *
- * @param {string} url
- */
-function getData(url) {
-  return new Promise((resolve, reject) => {
-    axios
-      .get(url)
-      .then(response => resolve(response.data))
-      .catch(e => reject(e));
-  });
-}
-
-/**
- * Executes the specified command as a child process.
- *
- * @param {*} command
- */
-function executeChild(command, options) {
-  return new Promise((resolve, reject) => {
-    exec(command, options, (error, stdout) => {
-      if (error) {
-        reject(
-          new Error(`Failed execution of ${command} with ${error}`)
-        );
-      } else resolve(`Successfully executed ${command}`);
-    });
-  });
-}
-
-function readFile(path) {
-  return fs.readFileSync(path);
-}
 
 /*
  * Starts the new server and handles housekeeping.
@@ -51,22 +15,27 @@ function readFile(path) {
 
 async function initializeServer() {
   try {
-    await executeChild(`java -jar ${config.serverLocation}server.jar -nogui`, { cwd: `${config.serverLocation}` });
+    await executeChild(`java -jar ${config.serverLocation}server.jar -nogui`, {
+      cwd: `${config.serverLocation}`
+    });
     let sedCommand;
     switch (os) {
-      case 'darwin':
-        sedCommand = `sed -i "" "s/eula=false/eula=true/" ${config.serverLocation}eula.txt`
+      case "darwin":
+        sedCommand = `sed -i "" "s/eula=false/eula=true/" ${
+          config.serverLocation
+        }eula.txt`;
         break;
-      case 'linux':
-        sedCommand = `sed -i "s/eula=false/eula=true/" ${config.serverLocation}eula.txt`
+      case "linux":
+        sedCommand = `sed -i "s/eula=false/eula=true/" ${
+          config.serverLocation
+        }eula.txt`;
         break;
     }
     console.log("Accepting EULA...");
     await executeChild(sedCommand);
     console.log("Accepted EULA");
-    
   } catch (e) {
-    console.error(e);
+    console.error(`Error initializing server! ${e}`);
   }
 }
 
@@ -86,7 +55,9 @@ async function downloadLatestJar(latestFromServer, latestRelease) {
       }...`
     );
     await executeChild(
-      `wget -O ${config.serverLocation}server.jar ${latestVersionUrl.downloads.server.url}`
+      `wget -O ${config.serverLocation}server.jar ${
+        latestVersionUrl.downloads.server.url
+      }`
     );
     console.log("Successfully retrieved latest jar.");
     console.log("Initializing server...");
@@ -101,10 +72,11 @@ async function downloadLatestJar(latestFromServer, latestRelease) {
 */
 function isFirstLaunch() {
   try {
-    config = JSON.parse(readFile('./config.json'));
+    config = JSON.parse(fs.readFileSync("./config.json"));
     if (config.currentVersion && config.serverLocation) {
       return false;
-    } return true;
+    }
+    return true;
   } catch (e) {
     console.error(`Error detected: ${e}`);
     return true;
@@ -113,7 +85,7 @@ function isFirstLaunch() {
 
 /**
  * Prompts our user for input based upon the provided question.
- * Optionally, allows our program to specify whether we with to confirm or not.
+ * Optionally, allows our program to specify whether we wish to confirm or not.
  *
  * @param {*} question
  */
@@ -124,19 +96,18 @@ function askQuestion(question, shouldConfirm) {
   });
 
   const confirm = () =>
-  new Promise(resolve => {
-    rl.question("Confirm? (y/n)", answer => {
-      const answerLower = answer.toString().toLowerCase();
-      if (answerLower === "y") {
-        rl.close();
-        resolve(true);
-      } else {
-        rl.close();
-        resolve(askQuestion(question, confirm));
-      }
+    new Promise(resolve => {
+      rl.question("Confirm? (y/n)", answer => {
+        const answerLower = answer.toString().toLowerCase();
+        if (answerLower === "y") {
+          rl.close();
+          resolve(true);
+        } else {
+          rl.close();
+          resolve(askQuestion(question, confirm));
+        }
+      });
     });
-  });
-
 
   return new Promise(resolve => {
     rl.question(question, async answer => {
@@ -152,11 +123,35 @@ function askQuestion(question, shouldConfirm) {
 function setConfig(configObj) {
   if (config) {
     // edit config file, with line fullPath
-    console.log('config exists, should be editing');
+    console.log("config exists, should be editing");
   } else {
     // create config file
-    fs.writeFileSync('./config.json', JSON.stringify(configObj));
+    fs.writeFileSync("./config.json", JSON.stringify(configObj));
   }
+}
+
+/*
+ * This function should back up any file that exists outside of server.jar
+ * It should allow for a copy failure.
+*/
+function backupCurrent() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      console.log("Backing up server data...");
+      await (!fs.existsSync(`${config.serverLocation}backup`)
+        ? executeChild(`mkdir ${config.serverLocation}/backup`)
+        : undefined);
+      await executeChild(
+        `rsync -ax --exclude=${config.serverLocation}backup  --exclude=${
+          config.serverLocation
+        }server.jar ${config.serverLocation} ${config.serverLocation}backup`
+      );
+      console.log("Successfully backed up old files!");
+      resolve();
+    } catch (e) {
+      reject(`Error backing up, ${e}`);
+    }
+  });
 }
 
 /*
@@ -165,7 +160,6 @@ function setConfig(configObj) {
 */
 async function initialize() {
   if (isFirstLaunch()) {
-    console.debug(`System detected as ${os}`)
     console.log(`Welcome to MinecraftUpdate for ${os}!`);
     console.log("This appears to be your first launch.");
     console.log("Please answer a few questions.");
@@ -173,8 +167,8 @@ async function initialize() {
       "Full path to server installation folder?",
       true
     );
-    if (!serverLocation.endsWith('/')) {
-      serverLocation += '/';
+    if (!serverLocation.endsWith("/")) {
+      serverLocation += "/";
     }
     const currentVersion = await askQuestion(
       "Current version of server?",
@@ -186,18 +180,14 @@ async function initialize() {
     } catch (e) {
       console.error(e);
       console.error(
-        "Error setting environment variables during initialization phase. Please try again."
+        `Error during initialization phase. ${e} Please try again.`
       );
     }
   } else {
     const URL = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
     console.log(`Querying ${URL}...`);
     try {
-      console.log(
-        `Current version detected as ${
-          config.currentVersion
-        }`
-      );
+      console.log(`Current version detected as ${config.currentVersion}`);
       const latestUpdate = await getData(URL);
       const latestRelease = latestUpdate.latest.release;
       console.log(`Latest Release: ${latestRelease}`);
@@ -205,6 +195,11 @@ async function initialize() {
         console.log(
           "Current release and local version match. No need for updates at this time."
         );
+        try {
+          await backupCurrent();
+        } catch (e) {
+          console.error(e);
+        }
         downloadLatestJar(latestUpdate, latestRelease);
       } else {
         console.warn(
@@ -214,6 +209,11 @@ async function initialize() {
          * We should backup our local files before we begin downloading the latest jar.
          * This process should start here.
         */
+        try {
+          await backupCurrent();
+        } catch (e) {
+          console.error(e);
+        }
         downloadLatestJar(latestUpdate, latestRelease);
       }
     } catch (e) {
