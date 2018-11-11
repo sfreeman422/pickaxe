@@ -4,12 +4,12 @@ const { exec } = require("child_process");
  *
  * @param {*} command
  */
-function executeChild(command, options) {
+function executeChild(command, options, ignoreError) {
   return new Promise((resolve, reject) => {
-    exec(command, options, error => {
-      if (error) {
-        reject(new Error(`Failed execution of ${command} with ${error}`));
-      } else resolve(`Successfully executed ${command}`);
+    exec(command, options, (error, stdout) => {
+      if (error && !ignoreError) {
+        reject(error);
+      } else resolve(stdout);
     });
   });
 }

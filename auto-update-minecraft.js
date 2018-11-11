@@ -11,7 +11,7 @@ let config;
  * If it does, be sure its true and if not set it to true.
  * TODO: Restore local files from backup.
  * TODO: Restart the server with the latest version and fully backed up files.
-*/
+ */
 
 async function initializeServer() {
   try {
@@ -42,7 +42,7 @@ async function initializeServer() {
 /*
  * Finds and downloads the latest jar from the server.
  * Kicks off an initialization of the new server.
-*/
+ */
 async function downloadLatestJar(latestFromServer, latestRelease) {
   const versionObject = latestFromServer.versions.find(
     version => version.id === latestRelease
@@ -69,7 +69,7 @@ async function downloadLatestJar(latestFromServer, latestRelease) {
 
 /*
  * Checks if our environment variables have been set.
-*/
+ */
 function isFirstLaunch() {
   try {
     config = JSON.parse(fs.readFileSync("./config.json"));
@@ -131,9 +131,33 @@ function setConfig(configObj) {
 }
 
 /*
+ * Kills any pre-existing minecraft servers. This is functional for Mac and Linux.
+ * Need to add support for windows
+ */
+function killServer() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const serverPID = await executeChild('pgrep -f "server.jar"', {}, true);
+      console.log("serverPID: ", serverPID);
+      if (serverPID) {
+        console.log(`Should kill server with ${serverPID}`);
+        await executeChild(`kill -9 ${serverPID}`);
+        resolve();
+      } else {
+        console.log(`Server not currently running: ${serverPID}`);
+        resolve();
+      }
+    } catch (e) {
+      console.log(`Issue detected when killing server: ${e}`);
+    }
+  });
+}
+
+/*
  * This function should back up any file that exists outside of server.jar
  * It should allow for a copy failure.
-*/
+ * WIP
+ */
 function backupCurrent() {
   return new Promise(async (resolve, reject) => {
     try {
@@ -157,7 +181,7 @@ function backupCurrent() {
 /*
  * Queries the server for the latest release version.
  * Compares to our current version and kicks off a new download if necessary.
-*/
+ */
 async function initialize() {
   if (isFirstLaunch()) {
     console.log(`Welcome to MinecraftUpdate for ${os}!`);
@@ -196,6 +220,7 @@ async function initialize() {
           "Current release and local version match. No need for updates at this time."
         );
         try {
+          await killServer();
           await backupCurrent();
         } catch (e) {
           console.error(e);
@@ -208,8 +233,9 @@ async function initialize() {
         /*
          * We should backup our local files before we begin downloading the latest jar.
          * This process should start here.
-        */
+         */
         try {
+          await killServer();
           await backupCurrent();
         } catch (e) {
           console.error(e);
