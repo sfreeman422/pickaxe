@@ -162,13 +162,15 @@ function backupCurrent() {
   return new Promise(async (resolve, reject) => {
     try {
       console.log("Backing up server data...");
+      // Creates abackup folder if it does not already exist.
       await (!fs.existsSync(`${config.serverLocation}backup`)
-        ? executeChild(`mkdir ${config.serverLocation}/backup`)
+        ? executeChild(`mkdir ${config.serverLocation}backup`)
         : undefined);
+      // Backs up date
       await executeChild(
-        `rsync -ax --exclude=${config.serverLocation}backup  --exclude=${
+        `rsync -ax --exclude=backup  --exclude=server.jar ${
           config.serverLocation
-        }server.jar ${config.serverLocation} ${config.serverLocation}backup`
+        } ${config.serverLocation}backup`
       );
       console.log("Successfully backed up old files!");
       resolve();
