@@ -25,7 +25,7 @@ async function initializeServer() {
         }eula.txt`;
         await executeChild(cpCmd)
           .then(() => console.log("Accepted EULA"))
-          .catch(e => console.error(e));
+          .catch(e => console.error(`Error accepting Eula! ${e}`));
         break;
       case "windows":
         break;
@@ -65,7 +65,7 @@ async function downloadLatestJar(latestFromServer, latestRelease) {
     console.log("Initializing server...");
     initializeServer();
   } catch (e) {
-    console.error(e);
+    console.error(`Error downloading latest jar! ${e}`);
   }
 }
 
@@ -80,7 +80,7 @@ function isFirstLaunch() {
     }
     return true;
   } catch (e) {
-    console.error(`Error detected: ${e}`);
+    console.error(`Error on first launch! ${e}`);
     return true;
   }
 }
@@ -125,7 +125,8 @@ function askQuestion(question, shouldConfirm) {
 function setConfig(configObj) {
   if (config) {
     // edit config file, with line fullPath
-    console.log("config exists, should be editing");
+    console.log("Config exists! Editing...");
+    // TODO: Edit the config.
   } else {
     // create config file
     fs.writeFileSync("./config.json", JSON.stringify(configObj));
