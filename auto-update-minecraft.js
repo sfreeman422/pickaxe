@@ -15,25 +15,27 @@ let config;
 
 async function initializeServer() {
   try {
-    await executeChild(`java -jar ${config.serverLocation}server.jar -nogui`, {
-      cwd: `${config.serverLocation}`
-    });
-    let sedCommand;
+    let cpCmd;
     switch (os) {
       case "darwin":
-        sedCommand = `sed -i "" "s/eula=false/eula=true/" ${
-          config.serverLocation
-        }eula.txt`;
-        break;
       case "linux":
-        sedCommand = `sed -i "s/eula=false/eula=true/" ${
+        console.log("Accepting EULA...");
+        cpCmd = `cp ./helpers/dummy-files/eula.txt ${
           config.serverLocation
         }eula.txt`;
+        await executeChild(cpCmd)
+          .then(() => console.log("Accepted EULA"))
+          .catch(e => console.error(e));
+        break;
+      case "windows":
         break;
     }
-    console.log("Accepting EULA...");
-    await executeChild(sedCommand);
-    console.log("Accepted EULA");
+    console.log("Starting server...");
+    executeChild(`java -jar ${config.serverLocation}server.jar -nogui`, {
+      cwd: `${config.serverLocation}`
+    }).catch(e => {
+      throw new Error(e);
+    });
   } catch (e) {
     console.error(`Error initializing server! ${e}`);
   }
@@ -221,13 +223,6 @@ async function initialize() {
         console.log(
           "Current release and local version match. No need for updates at this time."
         );
-        try {
-          await killServer();
-          await backupCurrent();
-        } catch (e) {
-          console.error(e);
-        }
-        downloadLatestJar(latestUpdate, latestRelease);
       } else {
         console.warn(
           "Latest release and local version mismatch! Getting new server jar.."
